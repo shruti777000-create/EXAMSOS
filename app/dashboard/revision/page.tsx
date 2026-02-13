@@ -57,8 +57,8 @@ interface RevisionTask {
 export default function RevisionPage() {
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>([])
 
-  const loadData = useCallback(() => {
-    setRoadmaps(getRoadmaps())
+  const loadData = useCallback(async () => {
+    setRoadmaps(await getRoadmaps())
   }, [])
 
   useEffect(() => {
@@ -119,15 +119,15 @@ export default function RevisionPage() {
   const weeklyRevCount = revisionTasks.filter((t) => t.entry.planType === "Revision_Weekly").length
   const finalRevCount = revisionTasks.filter((t) => t.entry.planType === "Revision_Final").length
 
-  const handleMarkComplete = (taskId: string) => {
+  const handleMarkComplete = async (taskId: string) => {
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
         roadmap.studyPlan[entryIndex].status = "completed"
-        saveRoadmap(roadmap)
-        updateStreak()
+        await saveRoadmap(roadmap)
+        await updateStreak()
 
-        const stats = getStats()
+        const stats = await getStats()
         const totalCompleted = roadmaps.reduce(
           (acc, r) => acc + r.studyPlan.filter((e) => e.status === "completed").length,
           0
@@ -140,7 +140,7 @@ export default function RevisionPage() {
               .reduce((h, e) => h + e.allocatedHours, 0),
           0
         )
-        updateStats({
+        await updateStats({
           ...stats,
           topicsCompleted: totalCompleted,
           totalStudyHours: Math.round(totalHours * 10) / 10,
@@ -148,19 +148,19 @@ export default function RevisionPage() {
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
-  const handleMarkMissed = (taskId: string) => {
+  const handleMarkMissed = async (taskId: string) => {
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
         roadmap.studyPlan[entryIndex].status = "missed"
-        saveRoadmap(roadmap)
+        await saveRoadmap(roadmap)
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
   return (

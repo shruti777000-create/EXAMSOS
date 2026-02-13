@@ -39,8 +39,9 @@ export default function SchedulePage() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDate, setSelectedDate] = useState<string>(formatDate(new Date()))
 
-  const loadData = useCallback(() => {
-    setRoadmaps(getRoadmaps())
+  const loadData = useCallback(async () => {
+    const data = await getRoadmaps()
+    setRoadmaps(Array.isArray(data) ? data : [])
   }, [])
 
   useEffect(() => {
@@ -60,7 +61,10 @@ export default function SchedulePage() {
   // Get all tasks for the selected date across all roadmaps
   const selectedTasks = useMemo(() => {
     const tasks: { roadmapId: string; roadmapName: string; entry: StudyPlanEntry }[] = []
+    if (!Array.isArray(roadmaps)) return tasks
+
     for (const roadmap of roadmaps) {
+      if (!roadmap.studyPlan) continue
       for (const entry of roadmap.studyPlan) {
         if (entry.studyDate === selectedDate) {
           tasks.push({
@@ -81,13 +85,16 @@ export default function SchedulePage() {
       const dateStr = formatDate(date)
       counts[dateStr] = { total: 0, completed: 0, hours: 0 }
     }
-    for (const roadmap of roadmaps) {
-      for (const entry of roadmap.studyPlan) {
-        if (counts[entry.studyDate]) {
-          counts[entry.studyDate].total++
-          counts[entry.studyDate].hours += entry.allocatedHours
-          if (entry.status === "completed") {
-            counts[entry.studyDate].completed++
+    if (Array.isArray(roadmaps)) {
+      for (const roadmap of roadmaps) {
+        if (!roadmap.studyPlan) continue
+        for (const entry of roadmap.studyPlan) {
+          if (counts[entry.studyDate]) {
+            counts[entry.studyDate].total++
+            counts[entry.studyDate].hours += entry.allocatedHours
+            if (entry.status === "completed") {
+              counts[entry.studyDate].completed++
+            }
           }
         }
       }
@@ -95,7 +102,9 @@ export default function SchedulePage() {
     return counts
   }, [roadmaps, weekDates])
 
-  const handleMarkComplete = (taskId: string) => {
+  const handleMarkComplete = async (taskId: string) => {
+    if (!Array.isArray(roadmaps)) return
+
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
@@ -112,20 +121,20 @@ export default function SchedulePage() {
           }
         }
 
-        saveRoadmap(roadmap)
-        updateStreak()
+        await saveRoadmap(roadmap)
+        await updateStreak()
 
-        const stats = getStats()
+        const stats = await getStats()
         const totalCompleted = roadmaps.reduce(
-          (acc, r) => acc + r.studyPlan.filter((e) => e.status === "completed").length,
+          (acc, r) => acc + (r.studyPlan || []).filter((e) => e.status === "completed").length,
           0
         )
         const totalHours = roadmaps.reduce(
           (acc, r) =>
-            acc + r.studyPlan.filter((e) => e.status === "completed").reduce((h, e) => h + e.allocatedHours, 0),
+            acc + (r.studyPlan || []).filter((e) => e.status === "completed").reduce((h, e) => h + e.allocatedHours, 0),
           0
         )
-        updateStats({
+        await updateStats({
           ...stats,
           topicsCompleted: totalCompleted,
           totalStudyHours: Math.round(totalHours * 10) / 10,
@@ -133,19 +142,21 @@ export default function SchedulePage() {
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
-  const handleMarkMissed = (taskId: string) => {
+  const handleMarkMissed = async (taskId: string) => {
+    if (!Array.isArray(roadmaps)) return
+
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
         roadmap.studyPlan[entryIndex].status = "missed"
-        saveRoadmap(roadmap)
+        await saveRoadmap(roadmap)
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
   const weekLabel = `${weekDates[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekDates[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
@@ -300,10 +311,10 @@ export default function SchedulePage() {
           {selectedDate === today
             ? "Today's Sessions"
             : new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
         </h2>
 
         {selectedTasks.length === 0 ? (

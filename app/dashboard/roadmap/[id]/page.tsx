@@ -41,22 +41,48 @@ export default function RoadmapDetailPage() {
   const params = useParams()
   const router = useRouter()
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [retryCount, setRetryCount] = useState(0)
 
-  const loadRoadmap = useCallback(() => {
+  const loadRoadmap = useCallback(async (retry = false) => {
     const id = params.id as string
-    const r = getRoadmap(id)
-    if (!r) {
+    if (!id) {
       router.push("/dashboard")
       return
     }
-    setRoadmap(r)
-  }, [params.id, router])
+
+    try {
+      const r = await getRoadmap(id)
+      if (!r) {
+        // If roadmap not found and we haven't retried, wait a bit and retry (in case it's still being saved)
+        if (!retry && retryCount < 3) {
+          setTimeout(() => {
+            setRetryCount(prev => prev + 1)
+            loadRoadmap(true)
+          }, 1000)
+          return
+        }
+        console.error("Roadmap not found:", id)
+        router.push("/dashboard")
+        return
+      }
+      setRoadmap(r)
+      setIsLoading(false)
+    } catch (error) {
+      console.error("Error loading roadmap:", error)
+      setIsLoading(false)
+      if (retryCount >= 3) {
+        router.push("/dashboard")
+      }
+    }
+  }, [params.id, router, retryCount])
 
   useEffect(() => {
+    setIsLoading(true)
     loadRoadmap()
   }, [loadRoadmap])
 
-  const handleMarkComplete = (taskId: string) => {
+  const handleMarkComplete = async (taskId: string) => {
     if (!roadmap) return
     const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
     if (entryIndex >= 0) {
@@ -75,37 +101,38 @@ export default function RoadmapDetailPage() {
         }
       }
 
-      saveRoadmap(roadmap)
-      updateStreak()
+      await saveRoadmap(roadmap)
+      await updateStreak()
 
-      const stats = getStats()
+      const stats = await getStats()
       const completedCount = roadmap.studyPlan.filter((e) => e.status === "completed").length
       const totalHours = roadmap.studyPlan
         .filter((e) => e.status === "completed")
         .reduce((h, e) => h + e.allocatedHours, 0)
-      updateStats({
+      await updateStats({
         ...stats,
         topicsCompleted: completedCount,
         totalStudyHours: Math.round(totalHours * 10) / 10,
       })
     }
-    loadRoadmap()
+    await loadRoadmap()
   }
 
-  const handleMarkMissed = (taskId: string) => {
+  const handleMarkMissed = async (taskId: string) => {
     if (!roadmap) return
     const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
     if (entryIndex >= 0) {
       roadmap.studyPlan[entryIndex].status = "missed"
-      saveRoadmap(roadmap)
+      await saveRoadmap(roadmap)
     }
-    loadRoadmap()
+    await loadRoadmap()
   }
 
-  if (!roadmap) {
+  if (isLoading || !roadmap) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Loading roadmap...</p>
       </div>
     )
   }

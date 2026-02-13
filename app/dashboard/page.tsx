@@ -18,10 +18,11 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<UserStats | null>(null)
   const [todayTasks, setTodayTasks] = useState<{ roadmapId: string; entry: StudyPlanEntry }[]>([])
 
-  const loadData = useCallback(() => {
-    const allRoadmaps = getRoadmaps()
+  const loadData = useCallback(async () => {
+    const allRoadmaps = await getRoadmaps()
     setRoadmaps(allRoadmaps)
-    setStats(getStats())
+    const currentStats = await getStats()
+    setStats(currentStats)
 
     const today = new Date().toISOString().split("T")[0]
     const tasks: { roadmapId: string; entry: StudyPlanEntry }[] = []
@@ -39,16 +40,16 @@ export default function DashboardPage() {
     loadData()
   }, [loadData])
 
-  const handleMarkComplete = (taskId: string) => {
+  const handleMarkComplete = async (taskId: string) => {
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
         roadmap.studyPlan[entryIndex].status = "completed"
-        saveRoadmap(roadmap)
-        updateStreak()
+        await saveRoadmap(roadmap)
+        await updateStreak()
 
         // Update stats
-        const currentStats = getStats()
+        const currentStats = await getStats()
         const completedTopics = roadmaps.reduce(
           (acc, r) => acc + r.studyPlan.filter((e) => e.status === "completed").length,
           0
@@ -58,7 +59,7 @@ export default function DashboardPage() {
             acc + r.studyPlan.filter((e) => e.status === "completed").reduce((h, e) => h + e.allocatedHours, 0),
           0
         )
-        updateStats({
+        await updateStats({
           ...currentStats,
           topicsCompleted: completedTopics,
           totalStudyHours: Math.round(totalHours * 10) / 10,
@@ -66,19 +67,19 @@ export default function DashboardPage() {
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
-  const handleMarkMissed = (taskId: string) => {
+  const handleMarkMissed = async (taskId: string) => {
     for (const roadmap of roadmaps) {
       const entryIndex = roadmap.studyPlan.findIndex((e) => e.id === taskId)
       if (entryIndex >= 0) {
         roadmap.studyPlan[entryIndex].status = "missed"
-        saveRoadmap(roadmap)
+        await saveRoadmap(roadmap)
         break
       }
     }
-    loadData()
+    await loadData()
   }
 
   const totalTopics = roadmaps.reduce((acc, r) => acc + r.topics.length, 0)

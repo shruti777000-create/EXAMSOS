@@ -17,7 +17,7 @@ import { Slider } from "@/components/ui/slider"
 import { Loader2, Upload, FileText, Sparkles } from "lucide-react"
 
 export default function NewRoadmapPage() {
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
 
   const [step, setStep] = useState<"input" | "generating" | "review">("input")
@@ -72,6 +72,10 @@ export default function NewRoadmapPage() {
     }, 2000)
 
     try {
+      if (!user) {
+        throw new Error("Please log in to generate a roadmap")
+      }
+
       const res = await fetch("/api/generate-roadmap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,38 +87,65 @@ export default function NewRoadmapPage() {
         }),
       })
 
-      if (!res.ok) {
-        throw new Error("Failed to generate roadmap")
-      }
-
       const data = await res.json()
 
-      if (!data.roadmap?.modules) {
-        throw new Error("Invalid response from AI")
+      if (!res.ok) {
+        const errorMsg = data.error || data.details || "Failed to generate roadmap"
+        throw new Error(errorMsg)
+      }
+
+      if (!data.roadmap?.modules || !Array.isArray(data.roadmap.modules) || data.roadmap.modules.length === 0) {
+        console.error("Invalid API response:", data)
+        throw new Error("Invalid response from AI. Please try again with a more detailed syllabus.")
       }
 
       const roadmap = buildRoadmap(
-        user!.id,
+        user.id,
         { name, examDate, dailyHours, inputMethod: inputMethod === "text" ? "text_input" : "pdf_upload" },
         data.roadmap.modules
       )
 
-      saveRoadmap(roadmap)
+      // Verify roadmap was built correctly
+      if (!roadmap.id || !roadmap.studyPlan || roadmap.studyPlan.length === 0) {
+        throw new Error("Failed to build roadmap structure. Please try again.")
+      }
+
+      // Save roadmap (localStorage save is synchronous and always succeeds)
+      // Supabase save is async and may fail silently, but localStorage is the source of truth
+      try {
+        await saveRoadmap(roadmap)
+        console.log("Roadmap saved successfully:", roadmap.id)
+      } catch (saveError) {
+        console.error("Error saving roadmap:", saveError)
+        // Even if Supabase save fails, localStorage save should have succeeded
+        // Continue with navigation as localStorage is the primary store
+      }
 
       // Update stats
-      const stats = getStats()
-      updateStats({
+      const stats = await getStats()
+      await updateStats({
         ...stats,
         totalTopics: stats.totalTopics + roadmap.topics.length,
       })
 
       clearInterval(interval)
+      // Navigate using roadmap.id - getRoadmap now searches by both id and syllabusId
       router.push(`/dashboard/roadmap/${roadmap.id}`)
     } catch (err) {
       clearInterval(interval)
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
+      const errorMessage = err instanceof Error ? err.message : "Something went wrong. Please try again."
+      console.error("Roadmap generation error:", err)
+      setError(errorMessage)
       setStep("input")
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
   }
 
   if (step === "generating") {

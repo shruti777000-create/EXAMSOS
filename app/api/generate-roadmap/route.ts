@@ -36,17 +36,21 @@ export async function POST(req: Request) {
     try {
       console.log(`Generating roadmap for: ${name} (Attempt ${attempt + 1}/${maxRetries})`);
 
-      // Use generateText with a prompt that encourages valid JSON
-      const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      // Support both common env variable names for Gemini API key
+      const apiKeyRaw = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
+      const apiKey = apiKeyRaw?.trim();
       console.log("API Key check:", apiKey ? `Present (length: ${apiKey.length})` : "MISSING");
 
-      if (!apiKey) {
-        console.error("❌ GOOGLE_GENERATIVE_AI_API_KEY environment variable is not set");
-        throw new Error("GOOGLE_GENERATIVE_AI_API_KEY environment variable is not set");
+      if (!apiKey || !apiKey.length) {
+        const msg =
+          "Gemini API key is not set. Add GOOGLE_GENERATIVE_AI_API_KEY or GEMINI_API_KEY to .env.local. " +
+          "Get a key at https://aistudio.google.com/app/apikey";
+        console.error("❌", msg);
+        throw new Error(msg);
       }
 
       const { text } = await generateText({
-        model: google('gemini-2.5-flash', { apiKey }),
+        model: google('gemini-flash-latest', { apiKey }),
         messages: [
           {
             role: "user",
@@ -111,8 +115,22 @@ Return ONLY the JSON.`,
     } catch (error: any) {
       console.error(`Error generating roadmap (Attempt ${attempt + 1}):`, error);
 
+      const errMsg = error.message ?? String(error);
+      const isInvalidKey =
+        errMsg.includes("API key not valid") ||
+        errMsg.includes("invalid API key") ||
+        errMsg.includes("400") ||
+        errMsg.includes("403") ||
+        errMsg.includes("INVALID_ARGUMENT");
+
+      if (isInvalidKey) {
+        const msg =
+          "Gemini API key is invalid or expired. Create a new key at https://aistudio.google.com/app/apikey and set GOOGLE_GENERATIVE_AI_API_KEY in .env.local.";
+        return Response.json({ error: "Invalid API key", details: msg }, { status: 401 });
+      }
+
       // Check if it's a rate limit or service unavailable error
-      const isRetryable = error.message?.includes('429') || error.message?.includes('503') || error.message?.includes('Too Many Requests');
+      const isRetryable = errMsg.includes("429") || errMsg.includes("503") || errMsg.includes("Too Many Requests");
 
       if (isRetryable && attempt < maxRetries - 1) {
         const waitTime = 2000 * Math.pow(2, attempt); // 2s, 4s
