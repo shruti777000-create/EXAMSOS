@@ -3,7 +3,7 @@
 **Exam SOS** is a personalized study planning application designed to help students complete their syllabus efficiently before exams. Using Google's Gemini AI, the platform analyzes your syllabus and generates a custom day-by-day study roadmap tailored to your available time and exam date.
 
 ## 🔗 Live Demo
-[Live Site](https://examsos-shruti777000-3532s-projects.vercel.app/)
+[Live Site] examsos.vercel.app
 
 ## 🚀 Features
 
